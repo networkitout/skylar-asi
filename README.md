@@ -230,5 +230,3 @@ Container names changed from `cf-reporter-*` to `skylar-*`; the database name an
 SKYLAR is free software under the **GNU Affero General Public License v3.0** ([LICENSE](LICENSE)).
 
 In plain terms: use it, run it internally, modify it, and redistribute it freely. If you distribute a modified version, or run a modified version as a service for others, you must make your modified source available under the same license. Running an unmodified copy for your own organisation carries no obligations. The About card in Settings links to this repository to satisfy section 13.
-
-If you need SKYLAR under different terms, open an issue.
