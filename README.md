@@ -194,7 +194,7 @@ pytest backend/tests -m perf          # timing-sensitive tests, excluded by defa
 cd frontend && npm ci && npm run dev  # Vite dev server on :5173, proxies /api to :8000
 ```
 
-Running the backend outside Docker needs `SECRET_KEY` and `DATABASE_URL` exported in the shell - see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#manual-install). Frontend work follows [docs/UI_CONVENTIONS.md](docs/UI_CONVENTIONS.md); [CLAUDE.md](CLAUDE.md) has the conventions for contributors and coding agents.
+Running the backend outside Docker needs `SECRET_KEY` and `DATABASE_URL` exported in the shell - see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#manual-install). Pull requests are welcome; [CONTRIBUTING.md](CONTRIBUTING.md) covers the DCO sign-off, checks, and how to add a technology signature. Frontend work follows [docs/UI_CONVENTIONS.md](docs/UI_CONVENTIONS.md); [CLAUDE.md](CLAUDE.md) has the conventions for coding agents.
 
 ---
 
