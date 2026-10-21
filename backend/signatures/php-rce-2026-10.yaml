@@ -1,0 +1,203 @@
+# Exposure signature: PHP RCE (Oct 2026)
+# The first signature. Adding a new technology = copying this file and
+# changing the patterns, not writing code. See SPEC.md Stage 2.
+
+name: php-rce-2026-10
+signature_version: "2"   # revision of this file; bump when patterns change
+title: "PHP critical RCE (CVE-2026-109618 / CVE-2026-109619)"
+description: >
+  Two heap use-after-free bugs in PHP's session.upload_progress handler,
+  CVSS v4.0 9.2. Attack vector: multipart POST containing a form field named
+  PHP_SESSION_UPLOAD_PROGRESS, multiple file parts triggering repeated
+  FILE_START events, and heap spray via >149 form fields. session.upload_progress
+  is ENABLED by default (php.ini). All maintained branches (8.2, 8.3, 8.4)
+  are vulnerable until patched; passive detection is limited to "runs PHP +
+  POST traffic" because the exploit signature lives in the request body, which
+  Cloudflare's sampled logs do not include.
+
+# --- Detection (Stage 2 rules read these) ---
+
+# Paths that indicate the technology MIGHT be present. Presence alone is NOT
+# evidence (CONTEXT #3) — scanners hit these on every host.
+path_patterns:
+  - "*.php"
+
+# EXP-001 threshold: distinct client IPs on 2xx responses to count as real use.
+min_distinct_ips: 10
+
+# EXP-002 canary paths: paths that cannot legitimately exist. A host returning
+# 2xx for these is a catch-all and is excluded from "likely affected"
+# (CONTEXT #4). These are taken from the scanner wordlists seen in the triage.
+canary_paths:
+  - "/phpinfo.php~"
+  - "/phpinfo.php.bak"
+  - "/info.php.bak"
+  - "/config.php.bak"
+  - "/cakephp/.env"
+  - "/zz-RANDOM.php"          # module substitutes a random token at run time
+min_canary_hits: 2            # >= this many canary 2xx => catch_all
+
+# EXP-004 self-call attribution: requests the app makes to itself. The source
+# IP is usually the origin; enrich it with whois/ASN to identify the host
+# (CONTEXT #9).
+self_call_paths:
+  - "/wp-cron.php"
+
+# --- Version currency (EXP-005, CONTEXT #10) ---
+version:
+  # Header to read during active verify.
+  header: "x-powered-by"
+  # Regex to pull a version out of e.g. "PHP/8.3.33".
+  extract: "PHP/([0-9]+\\.[0-9]+\\.[0-9]+)"
+  # Public feed of current releases. VERIFIED 2026-10-20: returns
+  # {major: {branch: {version: "x.y.z", ...}}} for every supported branch,
+  # so a branch missing from the feed is no longer maintained (EOL).
+  version_feed: "https://www.php.net/releases/active"
+  # Branches with no upstream fix. 8.2/8.3/8.4 ARE vulnerable but will
+  # receive patches; they are not listed here so EXP-005 can distinguish
+  # "behind" (patch available, not applied) from "EOL" (no fix coming).
+  # UPDATE eol_branches once PHP releases fixes and you want "current = safe".
+  eol_branches: ["5", "7", "8.0", "8.1"]
+
+# --- Active verify (Stage 3, opt-in, GET only) ---
+verify:
+  # Suspect paths worth a direct look beyond the canaries. These happened to
+  # surface in the triage (ICEcoder endpoints, framework config dumps). Keep
+  # it short; this is not a scanner.
+  suspect_paths:
+    - "/lib/terminal-xhr.php"
+    - "/config/aws.php"
+    - "/config/azure.php"
+  # Secret patterns to COUNT (never store values) in any 2xx response body
+  # (CONTEXT #13). Used to turn a 200 on a .bak/.env path into a real finding.
+  secret_patterns:
+    - "DB_PASSWORD"
+    - "DB_USERNAME"
+    - "define\\(.?DB_"
+    - "AUTH_KEY"
+    - "AWS_SECRET"
+    - "SECRET_KEY"
+    - "PRIVATE KEY"
+  # Framework debug-page tells — if a "200 .env" is really a Laravel/Symfony
+  # debug page, that's the credential-exposure case.
+  debug_markers: ["whoops", "ignition", "symfony", "stack trace", "APP_KEY"]
+
+# --- Mitigations (shown in the UI next to findings; never applied automatically) ---
+# kind: cloudflare_waf (needs expressions) | origin | patch
+mitigations:
+  - id: waf-block-upload-progress-field
+    kind: cloudflare_waf
+    title: "Enterprise: block multipart POSTs carrying the PHP_SESSION_UPLOAD_PROGRESS field"
+    summary: >
+      The vulnerable handler only runs when a multipart POST carries a form
+      field named PHP_SESSION_UPLOAD_PROGRESS. Blocking exactly that at the
+      edge closes the attack path for every PHP origin behind the zone, patched
+      or not, with near-zero impact: legitimate use of the field (AJAX upload
+      progress bars) is rare.
+    action: Block
+    expressions:
+      - plan: "Enterprise"
+        note: >
+          http.request.body.* fields require an Enterprise plan. multipart.names
+          is only populated for multipart/form-data bodies, so no Content-Type
+          check is needed.
+        expression: |
+          (http.request.method eq "POST") and
+          (any(http.request.body.multipart.names[*][0] eq "PHP_SESSION_UPLOAD_PROGRESS"))
+      - plan: "Enterprise (defence in depth)"
+        note: >
+          Body fields only see the first 128 KB. This variant also catches a
+          payload that pads the body to push the field past the limit, at the
+          cost of blocking any oversized multipart upload.
+        expression: |
+          (http.request.method eq "POST") and
+          (
+            any(http.request.body.multipart.names[*][0] eq "PHP_SESSION_UPLOAD_PROGRESS") or
+            (http.request.headers["content-type"][0] contains "multipart/form-data" and http.request.body.truncated)
+          )
+    steps:
+      - "Cloudflare Dashboard → select the zone → Security → WAF → Custom rules → Create rule."
+      - "Name it, e.g. 'Block PHP session.upload_progress RCE (CVE-2026-109618/109619)'."
+      - "Choose 'Edit expression' and paste the expression."
+      - "Set the action to Block (or Log first - see caveats) and Deploy."
+      - "Repeat per zone. Zones listed under 'Managed WAF coverage' as disabled still accept custom rules."
+    caveats: >
+      If any application uses upload progress bars, deploy with action Log for
+      a few hours and review Security Events before switching to Block. A site
+      that sets a custom session.upload_progress.name in php.ini needs that
+      name in the expression instead of the default.
+
+  - id: waf-challenge-multipart-uploads
+    kind: cloudflare_waf
+    title: "Free / Pro / Business: challenge every multipart upload"
+    summary: >
+      These plans cannot inspect request bodies in custom rules, so the field
+      name is invisible. Request headers are available on every plan, and the
+      exploit cannot be delivered without a multipart POST. A Managed Challenge
+      lets real users through (one interactive check) while automated exploit
+      traffic fails it.
+    action: Managed Challenge
+    expressions:
+      - plan: "Free / Pro / Business"
+        note: >
+          Scope it down if the zone has known upload endpoints that automation
+          must reach, e.g. append: and not http.request.uri.path in {"/api/upload"}.
+        expression: |
+          (http.request.method eq "POST") and
+          (http.request.headers["content-type"][0] contains "multipart/form-data")
+    steps:
+      - "Cloudflare Dashboard → select the zone → Security → WAF → Custom rules → Create rule."
+      - "Name it, e.g. 'Challenge multipart uploads (PHP CVE-2026-109618/109619)'."
+      - "Choose 'Edit expression' and paste the expression; add path exclusions for API clients that upload legitimately."
+      - "Set the action to Managed Challenge and Deploy."
+      - "Watch Security → Events for a day; switch to Block only for hosts with no legitimate uploads."
+    caveats: >
+      This is a blunt instrument: API clients, mobile apps, and webhooks that
+      post multipart bodies cannot solve a challenge and will be blocked unless
+      excluded by path. Also check whether Cloudflare has shipped an emergency
+      managed rule for these CVEs - the Free managed ruleset is on by default
+      and would cover zones without any custom rule.
+
+  - id: origin-disable-upload-progress
+    kind: origin
+    title: "Disable session.upload_progress at the origin"
+    summary: >
+      The feature is enabled by default in php.ini. Turning it off removes the
+      vulnerable code path entirely and does not depend on the edge.
+    snippet: |
+      ; php.ini, or a .user.ini / php-fpm pool override
+      session.upload_progress.enabled = 0
+    steps:
+      - "Add the setting to php.ini (or .user.ini / the php-fpm pool config) on each origin."
+      - "Reload PHP-FPM or the web server."
+      - "Confirm with: php -i | grep upload_progress (expect 'enabled => Off')."
+    caveats: >
+      Managed platforms (WP Engine, etc.) patch the runtime themselves and may
+      not expose php.ini - open a support ticket instead.
+
+  - id: patch-php
+    kind: patch
+    title: "Apply vendor PHP patches"
+    summary: >
+      Once PHP publishes fixed releases, EXP-005 will classify hosts as
+      'behind' against the release feed. Hosts on EOL branches (5, 7, 8.0,
+      8.1) get no fix; those need an upgrade or must stay behind the WAF rule.
+    steps:
+      - "Watch https://www.php.net/releases/ for the fixed 8.2 / 8.3 / 8.4 versions."
+      - "Re-run this analysis with Active Verify after patching; 'Diff vs Previous' shows what changed."
+
+# --- Reporting hints ---
+report:
+  managed_platforms:   # hosting whose vendor patches PHP (informational)
+    - "WP Engine"
+    - "cloudflare"
+  notes: >
+    EXPLOIT VECTOR: multipart POST body — not visible in Cloudflare sampled logs.
+    EXP-001 ("runs PHP") and EXP-007 (POST pressure) are triage signals only;
+    neither confirms nor rules out exploitation. MITIGATIONS: (1) Cloudflare WAF
+    rule blocking multipart requests whose body contains PHP_SESSION_UPLOAD_PROGRESS,
+    (2) set session.upload_progress.enabled=0 in php.ini if upload progress tracking
+    is not needed, (3) apply vendor patches once released. cPanel/webmail proxy
+    subdomains and public QA/staging WordPress are common findings; xmlrpc.php and
+    wp-login.php reachable from the internet are worth flagging even when not
+    directly CVE-related.

@@ -1,0 +1,94 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: skylar-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudflare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # The database name predates the SKYLAR rename and is kept so existing
+      # installs keep their data; override POSTGRES_DB in .env for a new name.
+      POSTGRES_DB: ${POSTGRES_DB:-cloudflare_reporter}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # The database is only used by the backend on the compose network;
+    # uncomment to expose it on the host for external tooling
+    # ports:
+    #   - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - skylar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudflare} -d ${POSTGRES_DB:-cloudflare_reporter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skylar-backend
+    # The backend is reached through the frontend's nginx proxy on the compose
+    # network. It is not published on the host so X-Forwarded-For (which the
+    # app trusts for client IPs) can't be spoofed by hitting it directly.
+    # Uncomment to expose it for direct API access / debugging.
+    # ports:
+    #   - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    # Every variable documented in .env.example reaches the backend
+    # (ENCRYPTION_SALT, scheduler intervals, exposure tuning, ENABLE_DOCS...).
+    # The values below override .env for the things compose owns.
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-cloudflare}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-cloudflare_reporter}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - skylar
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: skylar-frontend
+    ports:
+      - "${SKYLAR_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - skylar
+
+  # Cloudflare Tunnel - secure exposure without port forwarding.
+  # Only start this service when CF_TUNNEL_TOKEN is set:
+  #   docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: skylar-tunnel
+    profiles: ["tunnel"]
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN:-}
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    networks:
+      - skylar
+
+networks:
+  skylar:
+    driver: bridge
+
+volumes:
+  postgres_data:

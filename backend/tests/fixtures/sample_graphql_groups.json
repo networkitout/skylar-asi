@@ -1,0 +1,76 @@
+{
+  "_comment": "Synthetic fixture for rule unit tests. Each entry is one aggregated group as the collector would normalize it (dimensions flattened + count). Hosts are invented. These encode the real triage cases from CONTEXT.md so the acceptance tests in SPEC.md have concrete data.",
+
+  "groups": [
+    {
+      "_case": "EXP-001 real PHP: many distinct IPs, 2xx .php, trusted origin",
+      "host": "realwp.example.com",
+      "path": "/wp-login.php",
+      "method": "GET",
+      "edge_status": 200,
+      "origin_status": 200,
+      "distinct_client_ips": 108,
+      "count": 193
+    },
+    {
+      "_case": "EXP-004 self-call: wp-cron source IP is the origin/host",
+      "host": "realwp.example.com",
+      "path": "/wp-cron.php",
+      "method": "POST",
+      "edge_status": 200,
+      "origin_status": 200,
+      "source_ip": "203.0.113.37",
+      "count": 37
+    },
+    {
+      "_case": "EXP-002 catch-all: 2xx on impossible canary paths from one scanner",
+      "host": "spa.example.com",
+      "path": "/phpinfo.php~",
+      "method": "GET",
+      "edge_status": 200,
+      "origin_status": 200,
+      "distinct_client_ips": 1,
+      "count": 1
+    },
+    {
+      "_case": "EXP-002 catch-all: second canary hit, pushes host over min_canary_hits",
+      "host": "spa.example.com",
+      "path": "/cakephp/.env",
+      "method": "GET",
+      "edge_status": 200,
+      "origin_status": 200,
+      "distinct_client_ips": 1,
+      "count": 1
+    },
+    {
+      "_case": "catch-all also gets .php 2xx from few IPs — must NOT become likely_affected",
+      "host": "spa.example.com",
+      "path": "/index.php",
+      "method": "GET",
+      "edge_status": 200,
+      "origin_status": 200,
+      "distinct_client_ips": 2,
+      "count": 60
+    },
+    {
+      "_case": "EXP-003 misrouted: origin 200 is really a Cloudflare Error 1000 page; origin status must be untrusted (see sample_dns.json)",
+      "host": "webmail.example.com",
+      "path": "/cakephp/.env",
+      "method": "GET",
+      "edge_status": 200,
+      "origin_status": 200,
+      "distinct_client_ips": 2,
+      "count": 2
+    },
+    {
+      "_case": "brute force signal (informational), POSTs failing at origin",
+      "host": "managedwp.example.com",
+      "path": "/wp-login.php",
+      "method": "POST",
+      "edge_status": 520,
+      "origin_status": 0,
+      "distinct_client_ips": 1,
+      "count": 119
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+# Stage 1 collector query. See SPEC.md.
+#
+# The app already queries httpRequests1hGroups for traffic metrics, so the
+# GraphQL client, bearer auth, and zone iteration are solved. This is a new
+# query against the same endpoint (https://api.cloudflare.com/client/v4/graphql).
+#
+# VERIFY before relying on this:
+#   - dataset name: "httpRequestsAdaptiveGroups" is the sampled adaptive
+#     dataset; confirm it exists for the account's plan and that the fields
+#     below are valid GROUP-BY dimensions (some adaptive fields are
+#     filter-only). (SPEC Stage 1)
+#   - that clientRequestPath supports a "like" filter; if not, pull a broader
+#     set and filter path in code.
+#   - the max rows per query and max time window for the plan; chunk the window
+#     (default: 7 days in daily slices) and sum in code to avoid the row cap
+#     that truncated the manual exports. (CONTEXT #1)
+#
+# If clientIP is not a valid group-by dimension, drop it here and issue a
+# second grouped query (host + path + status, limited to origin 2xx) grouped by
+# clientIP to get the distinct-IP count EXP-001 needs (CONTEXT #5), or lower the
+# confidence for that rule.
+
+query ExposureHttpGroups(
+  $zoneTag: String!
+  $start: Time!
+  $end: Time!
+  $pathLike: String!
+) {
+  viewer {
+    zones(filter: { zoneTag: $zoneTag }) {
+      httpRequestsAdaptiveGroups(
+        limit: 10000
+        filter: {
+          datetime_geq: $start
+          datetime_lt: $end
+          clientRequestPath_like: $pathLike   # e.g. "%.php%"
+        }
+      ) {
+        count
+        dimensions {
+          clientRequestHTTPHost
+          clientRequestPath
+          clientRequestHTTPMethodName
+          edgeResponseStatus
+          originResponseStatus
+          clientIP
+          clientCountryName
+        }
+      }
+    }
+  }
+}

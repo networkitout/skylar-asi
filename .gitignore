@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Data
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.dump
+
+# Private key material
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Claude Code temporary files
+tmpclaude-*
+.claude/settings.local.json
+
+# Local release preparation and private audit artifacts
+.publication/
+.mypy_cache/

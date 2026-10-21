@@ -1,0 +1,35 @@
+{
+  "_comment": "Synthetic DNS records as the app already stores them (from Cloudflare sync), used by EXP-003 tests. Cloudflare published ranges are stubbed in the test; 104.21.0.0/16 and 172.67.0.0/16 stand in for Cloudflare space.",
+
+  "cloudflare_ranges_stub": ["104.21.0.0/16", "172.67.0.0/16"],
+
+  "records": [
+    {
+      "_case": "EXP-003 duplicate records: one points into Cloudflare space, one at a real origin -> misrouted + origin status untrusted",
+      "host": "webmail.example.com",
+      "type": "A",
+      "content": "104.21.15.127",
+      "proxied": true
+    },
+    {
+      "host": "webmail.example.com",
+      "type": "A",
+      "content": "198.51.100.44",
+      "proxied": true
+    },
+    {
+      "_case": "clean host: single record, not in Cloudflare space -> origin status trusted",
+      "host": "realwp.example.com",
+      "type": "A",
+      "content": "203.0.113.37",
+      "proxied": true
+    },
+    {
+      "_case": "single record pointing into Cloudflare space -> misrouted (Error 1000 producer)",
+      "host": "spa.example.com",
+      "type": "A",
+      "content": "172.67.200.10",
+      "proxied": true
+    }
+  ]
+}
