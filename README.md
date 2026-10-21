@@ -202,7 +202,7 @@ Running the backend outside Docker needs `SECRET_KEY` and `DATABASE_URL` exporte
 
 Nothing about your data changes. Three things to know:
 
-1. **Repository URL** is now `https://github.com/networkitout/skylar-asi.git` - update `origin` on existing clones (GitHub redirects the old name for a while).
+1. **Repository URL** is now `https://github.com/networkitout/skylar-asi.git` - update `origin` on existing clones: `git remote set-url origin https://github.com/networkitout/skylar-asi.git`. The old name does not redirect.
 2. **Compose project name** comes from the directory. If you re-clone into a new directory name, Compose will create a *new* database volume. To keep using the existing one, set `COMPOSE_PROJECT_NAME=cloudflare-reporter` in `.env` (or keep the directory name).
 3. **`ENCRYPTION_SALT` is now honoured under Docker.** Previously only three variables reached the container. On first start with a salt configured, stored tokens are re-encrypted automatically; you will see `Re-encrypted N stored API token(s)` in the backend log.
 
